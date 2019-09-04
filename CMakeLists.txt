@@ -22,4 +22,5 @@ add_executable(tests ${TESTS})
 target_link_libraries(tests thread_pool)
 target_include_directories(tests PUBLIC
     ${PROJECT_SOURCE_DIR}/modules/catch2
+    ${PROJECT_SOURCE_DIR}/test
 )
