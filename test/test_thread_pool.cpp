@@ -5,29 +5,29 @@
 
 #include <array>
 
-using namespace tp;
+#define TEMPLATE_TYPES_UNDER_TEST std::thread , tp::thread
 
-TEST_CASE("thread_pool::DefaultConstructible", "[thread_pool]") {
-    thread_pool tp({});
+TEMPLATE_TEST_CASE("thread_pool::DefaultConstructible", "[thread_pool]", TEMPLATE_TYPES_UNDER_TEST) {
+    tp::thread_pool<TestType> tp({});
 }
 
-TEST_CASE("thread_pool::100ThreadsConstruction", "[thread_pool]") {
-    thread_pool tp({.size = 100});
+TEMPLATE_TEST_CASE("thread_pool::100ThreadsConstruction", "[thread_pool]", TEMPLATE_TYPES_UNDER_TEST) {
+    tp::thread_pool<TestType> tp({.size = 100});
 }
 
-TEST_CASE("thread_pool::1000ThreadsConstruction", "[thread_pool]") {
-    thread_pool tp({.size = 1000});
+TEMPLATE_TEST_CASE("thread_pool::1000ThreadsConstruction", "[thread_pool]", TEMPLATE_TYPES_UNDER_TEST) {
+    tp::thread_pool<TestType> tp({.size = 1000});
 }
 
-TEST_CASE("thread_pool::10000ThreadsConstruction", "[thread_pool]") {
-    thread_pool tp({.size = 10000});
+TEMPLATE_TEST_CASE("thread_pool::10000ThreadsConstruction", "[thread_pool]", TEMPLATE_TYPES_UNDER_TEST) {
+    tp::thread_pool<TestType> tp({.size = 10000});
 }
 
-TEST_CASE("thread_pool::Work", "[thread_pool]") {
+TEMPLATE_TEST_CASE("thread_pool::Work", "[thread_pool]", TEMPLATE_TYPES_UNDER_TEST) {
     constexpr size_t kNumTasks = 1000;
     constexpr size_t kPoolSize = 100;
 
-    thread_pool tp({.size = kPoolSize});
+    tp::thread_pool<TestType> tp({.size = kPoolSize});
 
     SECTION("FreeFunction") {
         std::atomic<size_t> count = 0;
@@ -68,11 +68,11 @@ TEST_CASE("thread_pool::Work", "[thread_pool]") {
     }
 }
 
-TEST_CASE("thread_pool::OneBurst", "[thread_pool]") {
+TEMPLATE_TEST_CASE("thread_pool::OneBurst", "[thread_pool]", TEMPLATE_TYPES_UNDER_TEST) {
     constexpr size_t kNumTasks = 1000;
     constexpr size_t kPoolSize = 100;
 
-    thread_pool tp({.size = kPoolSize});
+    tp::thread_pool<TestType> tp({.size = kPoolSize});
 
     std::atomic<size_t> count = 0;
     for (size_t ii = 0; ii < kNumTasks; ii++) {
@@ -90,11 +90,11 @@ TEST_CASE("thread_pool::OneBurst", "[thread_pool]") {
     }
 }
 
-TEST_CASE("thread_pool::RepeatedBursts", "[thread_pool]") {
+TEMPLATE_TEST_CASE("thread_pool::RepeatedBursts", "[thread_pool]", TEMPLATE_TYPES_UNDER_TEST) {
     constexpr size_t kNumTasks = 1000;
     constexpr size_t kPoolSize = 100;
 
-    thread_pool tp({.size = kPoolSize});
+    tp::thread_pool<TestType> tp({.size = kPoolSize});
 
     std::atomic<size_t> count = 0;
     for (size_t round = 0; round < (kNumTasks / kPoolSize); round++) {
@@ -114,7 +114,7 @@ TEST_CASE("thread_pool::RepeatedBursts", "[thread_pool]") {
     }
 }
 
-TEST_CASE("thread_pool::Future", "[thread_pool]") {
+TEMPLATE_TEST_CASE("thread_pool::Future", "[thread_pool]", TEMPLATE_TYPES_UNDER_TEST) {
     std::atomic<bool> signal{false};
     auto wait_for_signal = [&signal] {
         while (!signal) {
@@ -122,7 +122,7 @@ TEST_CASE("thread_pool::Future", "[thread_pool]") {
         }
     };
 
-    thread_pool tp({.size = 1});
+    tp::thread_pool<TestType> tp({.size = 1});
     auto future = tp.push(wait_for_signal);
 
     REQUIRE(std::future_status::timeout == future.wait_for(std::chrono::milliseconds(10)));
