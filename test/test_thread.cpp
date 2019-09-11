@@ -1,17 +1,15 @@
-#include "thread.h"
+#include "thread_pool/thread.h"
+#include "test_utils.h"
 
 #include "catch.hpp"
 
-#include <chrono>
-#include <thread>
-
 using namespace tp;
 
-TEST_CASE("DefaultConstructible", "thread") {
+TEST_CASE("thread::DefaultConstructible", "[thread]") {
     thread t;
 }
 
-TEST_CASE("Movable", "thread") {
+TEST_CASE("thread::Movable", "[thread]") {
     thread t1;
     REQUIRE(!t1.joinable());
 
@@ -25,7 +23,7 @@ TEST_CASE("Movable", "thread") {
     t1.join();
 }
 
-TEST_CASE("WithParameters", "thread") {
+TEST_CASE("thread::WithParameters", "[thread]") {
     constexpr auto k2MB = 1 << 21;
     thread t(
         {.stack_size = k2MB},
@@ -39,81 +37,57 @@ TEST_CASE("WithParameters", "thread") {
     t.join();
 }
 
-TEST_CASE("HardwareConcurrency", "thread") {
+TEST_CASE("thread::HardwareConcurrency", "[thread]") {
     REQUIRE(thread::hardware_concurrency() == std::thread::hardware_concurrency());
 }
 
-TEST_CASE("Lambda", "thread") {
-    size_t count = 0;
-    thread t(
-        [&count] {
-            for (auto i = 0; i < 100; i++) {
-                count++;
-            }
-        });
+TEST_CASE("thread::Work", "[thread]") {
+    SECTION("FreeFunction") {
+        std::atomic<size_t> count = 0;
+        thread t(std::bind(free_function<decltype(count)>, std::ref(count)));
 
-    REQUIRE(t.joinable());
+        REQUIRE(t.joinable());
 
-    t.join();
-    REQUIRE(count == 100);
-    REQUIRE(!t.joinable());
-}
+        t.join();
+        REQUIRE(count == 1);
+        REQUIRE(!t.joinable());
+    }
 
-void free_function(size_t &count) {
-    for (auto i = 0; i < 100; i++) {
-        count++;
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    SECTION("Class") {
+        Class obj;
+        thread t(&Class::function, &obj);
+
+        REQUIRE(t.joinable());
+
+        t.join();
+        REQUIRE(obj.count == 1);
+        REQUIRE(!t.joinable());
+    }
+
+    SECTION("Functor") {
+        Functor::count = 0;
+        thread t(Functor{});
+
+        REQUIRE(t.joinable());
+
+        t.join();
+        REQUIRE(Functor::count == 1);
+        REQUIRE(!t.joinable());
+    }
+
+    SECTION("Lambda") {
+        size_t count = 0;
+        thread t([&count] { lambda(count); });
+
+        REQUIRE(t.joinable());
+
+        t.join();
+        REQUIRE(count == 1);
+        REQUIRE(!t.joinable());
     }
 }
 
-TEST_CASE("FreeFunction", "thread") {
-    size_t count = 0;
-    thread t(free_function, std::ref(count));
-
-    REQUIRE(t.joinable());
-
-    t.join();
-    REQUIRE(count == 100);
-    REQUIRE(!t.joinable());
-}
-
-class Foo {
-  public:
-    size_t count = 0;
-    void bar() {
-        free_function(count);
-    }
-};
-
-TEST_CASE("MemberFunction", "thread") {
-    Foo foo;
-    thread t(&Foo::bar, &foo);
-
-    REQUIRE(t.joinable());
-
-    t.join();
-    REQUIRE(foo.count == 100);
-    REQUIRE(!t.joinable());
-}
-
-struct Functor {
-    static inline size_t count = 0;
-    void operator()() {
-        free_function(count);
-    }
-};
-
-TEST_CASE("Functor", "thread") {
-    thread t(Functor{});
-
-    REQUIRE(t.joinable());
-
-    t.join();
-    REQUIRE(Functor::count == 100);
-    REQUIRE(!t.joinable());
-}
-
-TEST_CASE("100Threads", "thread") {
+TEST_CASE("thread::100Threads", "[thread]") {
     auto work = [](std::atomic<size_t> &count) {
         for (auto i = 0; i < 100; i++) {
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -151,7 +125,7 @@ TEST_CASE("100Threads", "thread") {
     }
 }
 
-TEST_CASE("IdAndHandle", "thread") {
+TEST_CASE("thread::IdAndHandle", "[thread]") {
     std::atomic<bool> alive = true;
     auto spin_until_id_and_handle_are_ready = [&alive] {
         while (alive) {

@@ -1,4 +1,4 @@
-#include "thread.h"
+#include "thread_pool/thread.h"
 
 #include <pthread.h>
 #include <sys/syscall.h>
@@ -13,6 +13,35 @@
 
 namespace tp {
 
+/// An atomic optional integral type
+class thread::Id {
+  public:
+    Id &operator=(const size_t value) {
+        std::scoped_lock lock(lock_);
+        value_ = value;
+        return *this;
+    }
+
+    size_t value() const {
+        std::scoped_lock lock(lock_);
+        return value_.value();
+    }
+
+    bool has_value() noexcept {
+        std::scoped_lock lock(lock_);
+        return value_.has_value();
+    }
+
+    void reset() noexcept {
+        std::scoped_lock lock(lock_);
+        value_.reset();
+    }
+
+  private:
+    mutable std::mutex lock_;
+    std::optional<size_t> value_{};
+};
+
 size_t thread::hardware_concurrency() {
     std::ifstream cpuinfo("/proc/cpuinfo");
 
@@ -26,7 +55,6 @@ thread::thread(thread &&other) noexcept
     , id_(std::move(other.id_))
     , thread_params_(std::move(other.thread_params_)) {
     other.handle_.reset();
-    other.id_.reset();
 }
 
 thread &thread::operator=(thread &&other) noexcept {
@@ -34,7 +62,6 @@ thread &thread::operator=(thread &&other) noexcept {
     id_ = std::move(other.id_);
     thread_params_ = std::move(other.thread_params_);
     other.handle_.reset();
-    other.id_.reset();
     return *this;
 }
 
@@ -49,7 +76,7 @@ bool thread::joinable() const noexcept {
 }
 
 size_t thread::get_id() const {
-    return id_.value();
+    return id_->value();
 }
 
 size_t thread::native_handle() const {
@@ -71,13 +98,13 @@ void thread::join() noexcept {
             std::cout << "Thread is not a joinable thread, or another thread is already waiting to join with this thread." << std::endl;
             break;
         case ESRCH:
-            std::cout <<  "No thread with the ID thread could be found." << std::endl;
+            std::cout << "No thread with the ID could be found" << std::endl;
             break;
         }
     }
 
     handle_.reset();
-    id_.reset();
+    id_->reset();
 }
 
 void thread::detach() noexcept {
@@ -98,20 +125,23 @@ void thread::detach() noexcept {
     }
 
     handle_.reset();
-    id_.reset();
+    id_->reset();
 }
 
 void thread::create(const Params &params) noexcept {
+    // Create attributes
     pthread_attr_t attributes{};
     pthread_attr_init(&attributes);
     if (params.stack_size.has_value()) {
         pthread_attr_setstacksize(&attributes, params.stack_size.value());
     }
 
-    thread_params_->store_id_callback = [this](const size_t id) { id_ = id; };
+    // Iniitalize ID
+    id_ = std::make_shared<Id>();
+    thread_params_->store_id_callback = [id_ = id_](const size_t id) { *id_ = id; };
 
+    // Create thread
     pthread_t handle{};
-
     const auto error = pthread_create(&handle, &attributes, &thread::thread_wrapper, thread_params_.release());
     if (print_errors_) {
         switch (error) {
@@ -129,6 +159,7 @@ void thread::create(const Params &params) noexcept {
         }
     }
 
+    // Store handle
     if (0 == error) {
         handle_ = static_cast<size_t>(handle);
     }
