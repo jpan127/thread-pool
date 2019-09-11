@@ -1,18 +1,14 @@
 #include "thread_pool/thread_pool.h"
 
-namespace tp {
+namespace tp::details {
 
-thread_pool::thread_pool(const Params &params) noexcept {
-    for (size_t t = 0; t < params.size; t++) {
-        threads_.push_back(thread(params.thread_params, &thread_pool::worker, this));
-    }
-}
-
-thread_pool::~thread_pool() noexcept {
+template <typename ThreadType>
+thread_pool_base<ThreadType>::~thread_pool_base() noexcept {
     join();
 }
 
-void thread_pool::join(const bool finish_queue) noexcept {
+template <typename ThreadType>
+void thread_pool_base<ThreadType>::join(const bool finish_queue) noexcept {
     // Block until queue is empty
     if (finish_queue) {
         std::unique_lock lock(lock_);
@@ -24,24 +20,30 @@ void thread_pool::join(const bool finish_queue) noexcept {
     join();
 }
 
-size_t thread_pool::size() const noexcept {
+template <typename ThreadType>
+size_t thread_pool_base<ThreadType>::size() const noexcept {
     return threads_.size();
 }
 
-size_t thread_pool::qsize() const noexcept {
+template <typename ThreadType>
+size_t thread_pool_base<ThreadType>::qsize() const noexcept {
     std::scoped_lock lock(lock_);
     return q_.size();
 }
 
-void thread_pool::join() noexcept {
+template <typename ThreadType>
+void thread_pool_base<ThreadType>::join() noexcept {
     kill_ = true;
     q_push_notifier_.notify_all();
     for (auto &thread : threads_) {
-        thread.join();
+        if (thread.joinable()) {
+            thread.join();
+        }
     }
 }
 
-void thread_pool::worker() noexcept {
+template <typename ThreadType>
+void thread_pool_base<ThreadType>::worker() noexcept {
     auto dequeue = [this] {
         Task task{};
 
@@ -78,4 +80,8 @@ void thread_pool::worker() noexcept {
     }
 }
 
-} // namespace tp
+/// Explicitly instantiate only these 2 acceptable implementations of thread
+template class thread_pool_base<std::thread>;
+template class thread_pool_base<tp::thread>;
+
+} // namespace tp::details

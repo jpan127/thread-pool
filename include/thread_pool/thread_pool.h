@@ -6,31 +6,21 @@
 #include <future>
 #include <mutex>
 #include <queue>
+#include <thread>
 #include <vector>
 
 namespace tp {
 
-class thread_pool {
-  public:
-    /// Parameters
-    struct Params {
-        thread::Params thread_params{};
-        size_t size = 1;
-    };
+namespace details {
 
+template <typename ThreadType>
+class thread_pool_base {
+  public:
     /// Constructor
-    thread_pool(const Params &params) noexcept;
+    thread_pool_base() = default;
 
     /// Destructor
-    ~thread_pool() noexcept;
-
-    /// Non movable
-    thread_pool(thread_pool &&other) = delete;
-    thread_pool &operator=(thread_pool &&other) = delete;
-
-    /// Non copyable
-    thread_pool(const thread_pool &other) = delete;
-    thread_pool &operator=(const thread_pool &other) = delete;
+    virtual ~thread_pool_base() noexcept;
 
     /// Push a task to the task queue
     template <typename Callable, typename ... Args>
@@ -60,15 +50,19 @@ class thread_pool {
     /// Current queue size
     size_t qsize() const noexcept;
 
+  protected:
+    /// Pool of threads
+    std::vector<ThreadType> threads_;
+
+    /// Worker thread, waits to dequeue tasks from the queue
+    void worker() noexcept;
+
   private:
     using Callback = thread::Callback;
     using Task = std::packaged_task<details::function_type<Callback>::type>;
 
     /// Flag to stop all threads
     std::atomic<bool> kill_{false};
-
-    /// Pool of threads
-    std::vector<thread> threads_;
 
     /// Lock, protects the queue and the condition variables
     mutable std::mutex lock_;
@@ -82,9 +76,62 @@ class thread_pool {
 
     /// Cancels and joins all threads
     void join() noexcept;
+};
 
-    /// Worker thread, waits to dequeu tasks from the queue
-    void worker() noexcept;
+} // namespace details
+
+template <typename ThreadType>
+class thread_pool;
+
+/// std::thread based thread pool
+template <>
+class thread_pool<std::thread> : public details::thread_pool_base<std::thread> {
+  public:
+    /// Parameters
+    struct Params {
+        size_t size = 1;
+    };
+
+    /// Constructor
+    thread_pool(const Params &params) noexcept {
+        for (size_t t = 0; t < params.size; t++) {
+            threads_.push_back(std::thread(&thread_pool::worker, this));
+        }
+    }
+
+    /// Non movable
+    thread_pool(thread_pool &&other) = delete;
+    thread_pool &operator=(thread_pool &&other) = delete;
+
+    /// Non copyable
+    thread_pool(const thread_pool &other) = delete;
+    thread_pool &operator=(const thread_pool &other) = delete;
+};
+
+/// tp::thread based thread pool
+template <>
+class thread_pool<tp::thread> : public details::thread_pool_base<tp::thread> {
+  public:
+    /// Parameters
+    struct Params {
+        thread::Params thread_params{};
+        size_t size = 1;
+    };
+
+    /// Constructor
+    thread_pool(const Params &params) noexcept {
+        for (size_t t = 0; t < params.size; t++) {
+            threads_.push_back(tp::thread(params.thread_params, &thread_pool::worker, this));
+        }
+    }
+
+    /// Non movable
+    thread_pool(thread_pool &&other) = delete;
+    thread_pool &operator=(thread_pool &&other) = delete;
+
+    /// Non copyable
+    thread_pool(const thread_pool &other) = delete;
+    thread_pool &operator=(const thread_pool &other) = delete;
 };
 
 } // namespace tp
